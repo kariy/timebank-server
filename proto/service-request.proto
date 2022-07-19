@@ -1,0 +1,146 @@
+syntax = "proto3";
+package servicerequest;
+
+// import "google/protobuf/timestamp.proto";
+
+service Request {
+    rpc create (Create.Request) returns (Create.Response);
+    // rpc update (Update.Request) returns (Update.Response);
+    rpc delete (Get.Request) returns (BasicResponse);
+    rpc get (Get.Request) returns (Get.Response);
+    // rpc getAllFromUser (GetAllFromUser.Request) returns (GetAllFromUser.Response);
+    // rpc getBids (Get.Request) returns (GetBids.Response);
+    // rpc placeBid () returns ();
+    // rpc deleteBid () returns ();
+    // rpc acceptBid () returns ();
+}
+
+message ServiceRequest {
+    message Media {
+        string type = 1;
+    }
+
+    message Details {
+
+        message Location {
+            string name = 1;
+            Coordinate coordinate = 2;
+        }
+
+        string title = 1;
+        string description = 2;
+        Location location = 3;
+    }
+
+    message Coordinate {
+        string latitude = 1;
+        string longitude = 2;
+    }
+
+    enum State {
+        PENDING = 0;
+        ACCEPTED = 1;
+        ONGOING = 2;
+        COMPLETED = 3;
+        ABORTED = 4;
+    }
+
+    message Bid {
+        string id = 1;
+        string bidder = 2;
+        uint32 amount = 3;
+        string request_id = 4;
+        string created_at = 5;
+    }
+
+    string id = 1;
+    string requestor = 2;
+    string provider = 3;
+    State state = 4;
+    Details details = 5;
+    repeated Media attachments = 6;
+    float rate = 7;
+    Bid accepted_bid = 8;
+    string created_at = 9;
+    string modified_at = 10;
+
+}
+
+message BasicResponse {
+    bool is_successful = 1;
+}
+
+message Create {
+    message NewServiceRequest {
+        ServiceRequest.Details details = 1;
+    }
+
+    message Request {
+        NewServiceRequest request = 1;
+        // string user_id = 2;
+        // string auth_token = 3;
+    }
+
+    message Response {
+        bool is_successful = 1;
+        optional string request_id = 2;
+    }
+}
+
+message Update {
+    message Request {
+        string request_id = 1;
+        string update_body = 2;
+    }
+
+    message Response {
+        bool is_successful = 1;
+        optional ServiceRequest updated_request = 2;
+    }
+}
+
+message Get {
+    message Request {
+        string request_id = 1;
+    }
+    
+    message Response {
+        ServiceRequest request = 1;
+    }
+}
+
+message GetAllFromUser {
+    message Request {
+        enum Filter {
+            ALL = 0;
+            PENDING = 1;
+            ONGOING = 2;
+            COMPLETED = 3;
+        }
+    
+        string user_id = 1;
+        Filter filter = 2;
+    }
+
+    message Response {
+        message ServiceRequestSummary {   
+            message Details {
+                string title = 1;
+                string description = 2;
+                float rate = 3;
+            }
+            
+            string id = 1;
+            string requestor = 2;
+            Details details = 3;
+        }
+    
+        repeated ServiceRequestSummary requests = 1;
+    }
+}
+
+message GetBids {
+    message Response {
+        repeated ServiceRequest.Bid bids = 1;
+    }
+}

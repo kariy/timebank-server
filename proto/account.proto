@@ -1,0 +1,80 @@
+syntax = "proto3";
+package account;
+
+service User {
+    rpc login (Login.Request) returns (Login.Response);
+    // rpc register (RegisterRequest) returns (RegisterResponse);
+    // rpc updateProfile () returns ();
+    // rpc resetPassword () returns ();
+    // rpc getRating () returns ();
+    // rpc getAllRatings () returns ();
+    rpc get (GetUserRequest) returns (GetUserResponse);
+    // rpc getAccountBalance () returns ();
+}
+
+message User {
+    message Name {
+        string first = 1;
+        string last = 2;
+    }
+
+    message Contact {
+        string type = 1;
+        string address = 2;
+    }
+
+    string id = 1;
+    Name name = 2;
+    string matric_number = 3;
+    repeated string skills = 4;
+    repeated Contact contacts = 5;
+}
+
+message Login {
+
+    message Request {
+        string email = 1;
+        string password = 2;
+    }
+
+    message Response {
+        string user_id = 1;
+        string auth_token = 2;
+    }
+}
+
+message RegisterRequest {
+    string email = 1;
+    string password = 2;
+    User.Name name = 3;
+    string matric_number = 4;
+    string mykad_number = 5;
+}
+
+message RegisterResponse {
+    bool is_successful = 1;
+}
+
+message GetUserRequest {
+    string user_id = 1;
+}
+
+message GetUserResponse {
+    User user = 1;
+}
+
+message GetRatingRequest {
+    string user_id = 1;
+}
+
+message GetRatingResponse {
+    uint32 rating = 1;
+}
+
+message GetAllRatingsRequest {
+    string user_id = 1;
+}
+
+message GetAllRatingsResponse {
+    uint32 rating = 1;
+}
