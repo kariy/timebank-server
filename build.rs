@@ -1,7 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // tonic_build::configure()
-    //     .build_server(true)
-    //     .compile(&["proto/service-request.proto"], &["proto"])?;
-    // tonic_build::compile_protos("proto/service-request.proto")?;
+    tonic_build::configure()
+        .build_server(true)
+        .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
+        .compile(&["proto/service-request.proto"], &["proto"])?;
+
     Ok(())
 }
