@@ -1,32 +1,77 @@
-use super::create_postgrest_client;
+// TODO:
+// 1. make sure methods' success/error responses are consistent
+
+use crate::services::{util::create_postgrest_client, Result};
 use postgrest::Postgrest;
-use serde::Serialize;
-use serde_json;
+use reqwest::StatusCode;
 use tonic::{Request, Response, Status};
 
-pub mod service_request {
-    tonic::include_proto!("servicerequest");
-}
-
-pub mod generic {
-    tonic::include_proto!("generic");
-}
-
-use service_request::service_request_server::ServiceRequest;
-use service_request::{create, create::CreateServiceRequestPayload};
+use crate::proto::service_request::service_request_server::ServiceRequest;
+use crate::proto::service_request::{create, delete, delete_bid, get_by_id, place_bid};
+use crate::proto::service_request::{ServiceRequestBid, ServiceRequestData};
+use crate::services::error_messages;
 
 const SERVICE_REQUEST_TABLE: &str = "service_request";
+const SERVICE_REQUEST_BID_TABLE: &str = "service_request_bid";
 
 pub struct ServiceRequestService {
     client: Postgrest,
 }
 
+#[allow(dead_code)]
+#[derive(serde::Deserialize, Default, Debug)]
+struct DatabaseError {
+    message: String,
+    code: String,
+    details: String,
+    hint: String,
+}
+
+#[allow(dead_code)]
+#[derive(serde::Deserialize, Default, Debug)]
+struct DatabaseErrorResponse {
+    response_status: u16,
+    error: DatabaseError,
+}
+
 impl ServiceRequestService {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Ok(ServiceRequestService {
             client: create_postgrest_client().unwrap(),
         })
     }
+
+    /// Returns an array of Service Request based on the provided `filter`
+    async fn get<T>(
+        &self,
+        column: T,
+        filter: T,
+    ) -> std::result::Result<Vec<ServiceRequestData>, DatabaseErrorResponse>
+    where
+        T: AsRef<str>,
+    {
+        let res = self
+            .client
+            .from(SERVICE_REQUEST_TABLE)
+            .select("*")
+            .eq(column, filter)
+            .execute()
+            .await
+            .unwrap();
+
+        match res.status() {
+            StatusCode::OK => {
+                Ok(serde_json::from_str(&res.text().await.unwrap()).unwrap_or_default())
+            }
+
+            _ => Err(DatabaseErrorResponse {
+                response_status: res.status().as_u16(),
+                error: serde_json::from_str(&res.text().await.unwrap()).unwrap_or_default(),
+            }),
+        }
+    }
+
+    // async fn is_authorize(&self) {}
 }
 
 #[tonic::async_trait]
@@ -34,121 +79,245 @@ impl ServiceRequest for ServiceRequestService {
     async fn create(
         &self,
         request: Request<create::Request>,
-    ) -> Result<Response<generic::Response>, Status> {
-        let request = request.into_inner();
+    ) -> Result<Response<create::Response>> {
+        let payload = request.into_inner().payload;
 
-        let (is_successful, response_data) = match request.payload {
-            Some(CreateServiceRequestPayload {
-                request: Some(new_request_data),
-                // user_id
-            }) => {
+        match payload {
+            Some(payload) => {
+                let body = serde_json::to_string(&payload).unwrap();
+
                 let res = self
                     .client
                     .from(SERVICE_REQUEST_TABLE)
-                    .insert(serde_json::to_string(&new_request_data).unwrap())
+                    .insert(body)
                     .execute()
                     .await
                     .unwrap();
 
-                let status = res.status().as_u16();
+                match res.status() {
+                    StatusCode::CREATED => {
+                        let values: Vec<ServiceRequestData> =
+                            serde_json::from_str(&res.text().await.unwrap()).unwrap_or_default();
 
-                let is_successful = if status >= 200 && status < 300 {
-                    true
-                } else {
-                    false
-                };
+                        Ok(Response::new(create::Response {
+                            request: values.into_iter().next(),
+                        }))
+                    }
 
-                let response_data = res.text().await.unwrap();
+                    StatusCode::BAD_REQUEST => Err(Status::new(
+                        tonic::Code::InvalidArgument,
+                        "Missing Expected Data",
+                    )),
 
-                (is_successful, response_data)
+                    StatusCode::CONFLICT => Err(Status::new(
+                        tonic::Code::FailedPrecondition,
+                        "Data Conflict",
+                    )),
+
+                    _ => Err(Status::new(tonic::Code::Internal, error_messages::UNKNOWN)),
+                }
             }
-            _ => {
-                // send 'invalid request payload format' response
 
-                let error = generic::Error {
-                    details: "".to_string(),
-                    message: "invalid request payload format".to_string(),
-                };
-
-                (false, serde_json::to_string(&error).unwrap())
-            }
-        };
-
-        Ok(Response::new(generic::Response {
-            is_successful,
-            payload: response_data,
-        }))
-
-        // let (new_request_data, requestor) = (data.request.unwrap(), data.user_id);
-
-        // let new_request_str = {
-        //     let new = NewServiceRequestData {
-        //         details: new_request_data.details.unwrap(),
-        //         rate: new_request_data.rate,
-        //         requestor: requestor,
-        //     };
-
-        //     serde_json::to_string(&new).unwrap()
-        // };
-
-        // let (is_successful, create_response_oneof) = {
-        //     let res = self
-        //         .client
-        //         .from(SERVICE_REQUEST_TABLE)
-        //         .insert(new_request_str)
-        //         .execute()
-        //         .await
-        //         .unwrap();
-        // };
-
-        // Ok(Response::new(create::Response {
-        //     is_successful,
-        //     create_response_oneof,
-        // }))
+            _ => Err(Status::new(
+                tonic::Code::InvalidArgument,
+                error_messages::INVALID_PAYLOAD,
+            )),
+        }
     }
 
-    // async fn delete(
-    //     &self,
-    //     request: Request<get_one::Request>,
-    // ) -> Result<Response<BasicResponse>, Status> {
-    //     let request = request.into_inner();
+    async fn delete(
+        &self,
+        request: Request<delete::Request>,
+    ) -> Result<Response<delete::Response>> {
+        let payload = request.into_inner().payload;
 
-    //     let res = self
-    //         .client
-    //         .from(SERVICE_REQUEST_TABLE)
-    //         .eq("id", request.request_id)
-    //         .delete()
-    //         .execute()
-    //         .await
-    //         .unwrap();
+        match payload {
+            Some(payload) => {
+                {
+                    let values = self
+                        .get("id", &payload.request_id)
+                        .await
+                        .unwrap_or_default();
 
-    //     let is_successful = if res.status() == 204 { true } else { false };
+                    if values.is_empty() {
+                        return Err(Status::new(
+                            tonic::Code::FailedPrecondition,
+                            "ITEM DOESN'T EXIST",
+                        ));
+                    }
+                }
 
-    //     Ok(Response::new(BasicResponse { is_successful }))
-    // }
+                let res = self
+                    .client
+                    .from(SERVICE_REQUEST_TABLE)
+                    .eq("id", payload.request_id)
+                    .delete()
+                    .execute()
+                    .await
+                    .unwrap();
 
-    // async fn get_one(
-    //     &self,
-    //     request: Request<get_one::Request>,
-    // ) -> Result<Response<get_one::Response>, Status> {
-    //     let request = request.into_inner();
+                match res.status() {
+                    StatusCode::OK => Ok(Response::new(delete::Response {})),
 
-    //     let res = self
-    //         .client
-    //         .from(SERVICE_REQUEST_TABLE)
-    //         .eq("id", request.request_id)
-    //         .select("*,service_request_bid(*)")
-    //         .execute()
-    //         .await
-    //         .unwrap();
+                    _ => Err(Status::new(tonic::Code::Unknown, error_messages::UNKNOWN)),
+                }
+            }
 
-    //     // println!("{:#}", res.text().await.unwrap());
+            _ => Err(Status::new(
+                tonic::Code::InvalidArgument,
+                error_messages::INVALID_PAYLOAD,
+            )),
+        }
+    }
 
-    //     Ok(Response::new(get_one::Response {
-    //         request: match res.json::<Vec<service_request::ServiceRequest>>().await {
-    //             Ok(data) => Some(data[0].clone()),
-    //             Err(_) => None,
-    //         },
-    //     }))
-    // }
+    async fn get_by_id(
+        &self,
+        request: Request<get_by_id::Request>,
+    ) -> Result<Response<get_by_id::Response>> {
+        let payload = request.into_inner().payload;
+
+        match payload {
+            Some(payload) => {
+                let values = self
+                    .get("id", &payload.request_id)
+                    .await
+                    .unwrap_or_default();
+
+                Ok(Response::new(get_by_id::Response {
+                    request: values.into_iter().next(),
+                }))
+            }
+
+            _ => Err(Status::new(
+                tonic::Code::InvalidArgument,
+                error_messages::INVALID_PAYLOAD,
+            )),
+        }
+    }
+
+    async fn place_bid(
+        &self,
+        request: Request<place_bid::Request>,
+    ) -> Result<Response<place_bid::Response>> {
+        let payload = request.into_inner().payload;
+
+        match payload {
+            Some(payload) => {
+                // Check if user already bid on`request_id`
+                {
+                    let res = self
+                        .client
+                        .from(SERVICE_REQUEST_BID_TABLE)
+                        .eq("request_id", &payload.request_id)
+                        .eq("bidder", &payload.bidder)
+                        .execute()
+                        .await
+                        .unwrap();
+
+                    let data =
+                        serde_json::from_str::<Vec<ServiceRequestBid>>(&res.text().await.unwrap());
+
+                    match data {
+                        Ok(data) => {
+                            if !data.is_empty() {
+                                return Err(Status::new(
+                                    tonic::Code::AlreadyExists,
+                                    error_messages::ALREADY_EXISTS,
+                                ));
+                            }
+                        }
+
+                        Err(_) => {
+                            return Err(Status::new(tonic::Code::Unknown, error_messages::UNKNOWN))
+                        }
+                    }
+                }
+
+                let body = serde_json::to_string(&payload).unwrap();
+
+                let res = self
+                    .client
+                    .from(SERVICE_REQUEST_BID_TABLE)
+                    .insert(body)
+                    .execute()
+                    .await
+                    .unwrap();
+
+                match res.status() {
+                    StatusCode::CREATED => {
+                        let bids: Vec<ServiceRequestBid> =
+                            serde_json::from_str(&res.text().await.unwrap()).unwrap_or_default();
+
+                        Ok(Response::new(place_bid::Response {
+                            bid: bids.into_iter().next(),
+                        }))
+                    }
+
+                    StatusCode::BAD_REQUEST => Err(Status::new(
+                        tonic::Code::InvalidArgument,
+                        error_messages::INVALID_PAYLOAD,
+                    )),
+
+                    _ => Err(Status::new(tonic::Code::Unknown, error_messages::UNKNOWN)),
+                }
+            }
+
+            _ => Err(Status::new(
+                tonic::Code::InvalidArgument,
+                error_messages::INVALID_PAYLOAD,
+            )),
+        }
+    }
+
+    async fn delete_bid(
+        &self,
+        request: Request<delete_bid::Request>,
+    ) -> Result<Response<delete_bid::Response>> {
+        let payload = request.into_inner().payload;
+
+        match payload {
+            Some(payload) => {
+                {
+                    let res = self
+                        .client
+                        .from(SERVICE_REQUEST_BID_TABLE)
+                        .eq("id", &payload.bid_id)
+                        .execute()
+                        .await
+                        .unwrap();
+
+                    let data =
+                        serde_json::from_str::<Vec<ServiceRequestBid>>(&res.text().await.unwrap())
+                            .unwrap_or_default();
+
+                    if data.is_empty() {
+                        return Err(Status::new(
+                            tonic::Code::FailedPrecondition,
+                            "ITEM DOESN'T EXIST",
+                        ));
+                    }
+                }
+
+                let res = self
+                    .client
+                    .from(SERVICE_REQUEST_BID_TABLE)
+                    .eq("id", &payload.bid_id)
+                    .delete()
+                    .execute()
+                    .await
+                    .unwrap();
+
+                match res.status() {
+                    StatusCode::OK => Ok(Response::new(delete_bid::Response {})),
+
+                    _ => Err(Status::new(tonic::Code::Unknown, error_messages::UNKNOWN)),
+                }
+            }
+
+            _ => Err(Status::new(
+                tonic::Code::InvalidArgument,
+                error_messages::INVALID_PAYLOAD,
+            )),
+        }
+    }
 }
