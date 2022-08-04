@@ -2,17 +2,15 @@ syntax = "proto3";
 package account;
 
 service User {
-    rpc login (Login.Request) returns (Login.Response);
-    // rpc register (RegisterRequest) returns (RegisterResponse);
     // rpc updateProfile () returns ();
     // rpc resetPassword () returns ();
     // rpc getRating () returns ();
     // rpc getAllRatings () returns ();
-    rpc get (GetUserRequest) returns (GetUserResponse);
+    // rpc get (GetUserRequest) returns (GetUserResponse);
     // rpc getAccountBalance () returns ();
 }
 
-message User {
+message UserData {
     message Name {
         string first = 1;
         string last = 2;
@@ -31,7 +29,6 @@ message User {
 }
 
 message Login {
-
     message Request {
         string email = 1;
         string password = 2;
@@ -46,7 +43,7 @@ message Login {
 message RegisterRequest {
     string email = 1;
     string password = 2;
-    User.Name name = 3;
+    UserData.Name name = 3;
     string matric_number = 4;
     string mykad_number = 5;
 }
@@ -60,7 +57,7 @@ message GetUserRequest {
 }
 
 message GetUserResponse {
-    User user = 1;
+    UserData user = 1;
 }
 
 message GetRatingRequest {
