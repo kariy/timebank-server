@@ -133,18 +133,16 @@ impl ServiceRequest for ServiceRequestService {
 
         match payload {
             Some(payload) => {
-                {
-                    let values = self
-                        .get("id", &payload.request_id)
-                        .await
-                        .unwrap_or_default();
+                let res = self
+                    .get("id", &payload.request_id)
+                    .await
+                    .unwrap_or_default();
 
-                    if values.is_empty() {
-                        return Err(Status::new(
-                            tonic::Code::FailedPrecondition,
-                            "ITEM DOESN'T EXIST",
-                        ));
-                    }
+                if res.is_empty() {
+                    return Err(Status::new(
+                        tonic::Code::FailedPrecondition,
+                        "ITEM DOESN'T EXIST",
+                    ));
                 }
 
                 let res = self
@@ -204,32 +202,31 @@ impl ServiceRequest for ServiceRequestService {
         match payload {
             Some(payload) => {
                 // Check if user already bid on`request_id`
-                {
-                    let res = self
-                        .client
-                        .from(SERVICE_REQUEST_BID_TABLE)
-                        .eq("request_id", &payload.request_id)
-                        .eq("bidder", &payload.bidder)
-                        .execute()
-                        .await
-                        .unwrap();
 
-                    let data =
-                        serde_json::from_str::<Vec<ServiceRequestBid>>(&res.text().await.unwrap());
+                let res = self
+                    .client
+                    .from(SERVICE_REQUEST_BID_TABLE)
+                    .eq("request_id", &payload.request_id)
+                    .eq("bidder", &payload.bidder)
+                    .execute()
+                    .await
+                    .unwrap();
 
-                    match data {
-                        Ok(data) => {
-                            if !data.is_empty() {
-                                return Err(Status::new(
-                                    tonic::Code::AlreadyExists,
-                                    error_messages::ALREADY_EXISTS,
-                                ));
-                            }
+                let data =
+                    serde_json::from_str::<Vec<ServiceRequestBid>>(&res.text().await.unwrap());
+
+                match data {
+                    Ok(data) => {
+                        if !data.is_empty() {
+                            return Err(Status::new(
+                                tonic::Code::AlreadyExists,
+                                error_messages::ALREADY_EXISTS,
+                            ));
                         }
+                    }
 
-                        Err(_) => {
-                            return Err(Status::new(tonic::Code::Unknown, error_messages::UNKNOWN))
-                        }
+                    Err(_) => {
+                        return Err(Status::new(tonic::Code::Unknown, error_messages::UNKNOWN))
                     }
                 }
 
