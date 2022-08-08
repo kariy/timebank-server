@@ -6,9 +6,9 @@ use postgrest::Postgrest;
 use reqwest::StatusCode;
 use tonic::{Request, Response, Status};
 
-use crate::proto::service_request::service_request_server::ServiceRequest;
-use crate::proto::service_request::{create, delete, delete_bid, get_by_id, place_bid};
-use crate::proto::service_request::{ServiceRequestBid, ServiceRequestData};
+use crate::proto::servicerequest::service_request_server::ServiceRequest;
+use crate::proto::servicerequest::{create, delete, delete_bid, get_by_id, place_bid};
+use crate::proto::servicerequest::{ServiceRequestBid, ServiceRequestData};
 use crate::services::error_messages;
 
 const SERVICE_REQUEST_TABLE: &str = "service_request";

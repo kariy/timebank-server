@@ -5,6 +5,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .build_client(true)
         .type_attribute(".", SERIAL_DESERIAL_ATTR)
+        .include_file("protol.rs")
         .compile(
             &[
                 "proto/auth.proto",

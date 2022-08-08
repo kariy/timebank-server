@@ -4,10 +4,10 @@ pub mod services;
 use dotenv::dotenv;
 use tonic::{transport::Server, Request, Status};
 
+use proto::account::user_server::UserServer;
 use proto::auth::auth_server::AuthServer;
-use proto::service_request::service_request_server::ServiceRequestServer;
-use services::auth::AuthService;
-use services::service_request::ServiceRequestService;
+use proto::servicerequest::service_request_server::ServiceRequestServer;
+use services::{account::UserService, auth::AuthService, service_request::ServiceRequestService};
 
 fn interceptor(req: Request<()>) -> Result<Request<()>, Status> {
     println!("middleware {:?}", req.metadata());
@@ -22,6 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request_service = ServiceRequestService::new().unwrap();
     let auth_service = AuthService::default();
+    let user_service = UserService::new().unwrap();
 
     Server::builder()
         .add_service(ServiceRequestServer::with_interceptor(
@@ -29,6 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             interceptor,
         ))
         .add_service(AuthServer::new(auth_service))
+        .add_service(UserServer::new(user_service))
         .serve(addr)
         .await?;
 
