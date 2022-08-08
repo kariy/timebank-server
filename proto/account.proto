@@ -2,76 +2,33 @@ syntax = "proto3";
 package account;
 
 service User {
-    // rpc updateProfile () returns ();
-    // rpc resetPassword () returns ();
-    // rpc getRating () returns ();
-    // rpc getAllRatings () returns ();
-    // rpc get (GetUserRequest) returns (GetUserResponse);
-    // rpc getAccountBalance () returns ();
+    rpc getUser (GetUser.Request) returns (GetUser.Response);
 }
 
-message UserData {
-    message Name {
-        string first = 1;
-        string last = 2;
-    }
-
-    message Contact {
-        string type = 1;
-        string address = 2;
-    }
-
-    string id = 1;
-    Name name = 2;
-    string matric_number = 3;
-    repeated string skills = 4;
-    repeated Contact contacts = 5;
+message Contact {
+    string type = 1;
+    string address = 2;
 }
 
-message Login {
+message UserProfileData {
+    string user_id = 1;
+    string name = 2;
+    repeated string skills = 3;
+    repeated Contact contacts = 4;
+    string created_at = 5;
+    string updated_at = 6;
+}
+
+message GetUser {
+    message Payload {
+        string user_id = 1;
+    }
+
     message Request {
-        string email = 1;
-        string password = 2;
+        Payload payload = 1;
     }
 
     message Response {
-        string user_id = 1;
-        string auth_token = 2;
+        UserProfileData user = 1;
     }
-}
-
-message RegisterRequest {
-    string email = 1;
-    string password = 2;
-    UserData.Name name = 3;
-    string matric_number = 4;
-    string mykad_number = 5;
-}
-
-message RegisterResponse {
-    bool is_successful = 1;
-}
-
-message GetUserRequest {
-    string user_id = 1;
-}
-
-message GetUserResponse {
-    UserData user = 1;
-}
-
-message GetRatingRequest {
-    string user_id = 1;
-}
-
-message GetRatingResponse {
-    uint32 rating = 1;
-}
-
-message GetAllRatingsRequest {
-    string user_id = 1;
-}
-
-message GetAllRatingsResponse {
-    uint32 rating = 1;
 }

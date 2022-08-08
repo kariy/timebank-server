@@ -5,3 +5,7 @@ pub mod service_request {
 pub mod auth {
     tonic::include_proto!("auth");
 }
+
+pub mod account {
+    tonic::include_proto!("account");
+}
