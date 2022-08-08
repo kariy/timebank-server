@@ -2,7 +2,8 @@ syntax = "proto3";
 package account;
 
 service User {
-    rpc getUser (GetUser.Request) returns (GetUser.Response);
+    rpc getById (GetById.Request) returns (GetById.Response);
+    rpc update (Update.Request) returns (Update.Response);
 }
 
 message Contact {
@@ -19,9 +20,24 @@ message UserProfileData {
     string updated_at = 6;
 }
 
-message GetUser {
+message GetById {
     message Payload {
         string user_id = 1;
+    }
+
+    message Request {
+        Payload payload = 1;
+    }
+
+    message Response {
+        UserProfileData user = 1;
+    }
+}
+
+message Update {
+    message Payload {
+        string user_id = 1;
+        string update = 2;
     }
 
     message Request {
