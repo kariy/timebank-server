@@ -7,20 +7,22 @@ use reqwest::StatusCode;
 use tonic::{Request, Response, Status};
 
 use crate::proto::servicerequest::service_request_server::ServiceRequest;
-use crate::proto::servicerequest::{create, delete, delete_bid, get_by_id, place_bid};
-use crate::proto::servicerequest::{ServiceRequestBid, ServiceRequestData};
+use crate::proto::servicerequest::{
+    create, delete, delete_bid, get_by_id, get_rating_by_id, place_bid, place_rating,
+};
+use crate::proto::servicerequest::{ServiceRating, ServiceRequestBid, ServiceRequestData};
 use crate::services::error_messages;
 
 const SERVICE_REQUEST_TABLE: &str = "service_request";
 const SERVICE_REQUEST_BID_TABLE: &str = "service_request_bid";
 
 pub struct ServiceRequestService {
-    client: Postgrest,
+    db_client: Postgrest,
 }
 
 #[allow(dead_code)]
 #[derive(serde::Deserialize, Default, Debug)]
-struct DatabaseError {
+struct DatabaseErrorMessage {
     message: String,
     code: String,
     details: String,
@@ -31,13 +33,13 @@ struct DatabaseError {
 #[derive(serde::Deserialize, Default, Debug)]
 struct DatabaseErrorResponse {
     response_status: u16,
-    error: DatabaseError,
+    error: DatabaseErrorMessage,
 }
 
 impl ServiceRequestService {
     pub fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Ok(ServiceRequestService {
-            client: create_postgrest_client().unwrap(),
+            db_client: create_postgrest_client().unwrap(),
         })
     }
 
@@ -51,7 +53,7 @@ impl ServiceRequestService {
         T: AsRef<str>,
     {
         let res = self
-            .client
+            .db_client
             .from(SERVICE_REQUEST_TABLE)
             .select("*")
             .eq(column, filter)
@@ -67,6 +69,40 @@ impl ServiceRequestService {
             _ => Err(DatabaseErrorResponse {
                 response_status: res.status().as_u16(),
                 error: serde_json::from_str(&res.text().await.unwrap()).unwrap_or_default(),
+            }),
+        }
+    }
+
+    async fn get_rating<T>(
+        &self,
+        column: T,
+        filter: T,
+    ) -> std::result::Result<Vec<ServiceRating>, DatabaseErrorResponse>
+    where
+        T: AsRef<str>,
+    {
+        let res = self
+            .db_client
+            .from("service_rating")
+            .select("*")
+            .eq(column, filter)
+            .execute()
+            .await;
+
+        match res {
+            Ok(response) if response.status() == StatusCode::OK => Ok(serde_json::from_str(
+                &response.text().await.unwrap_or_default(),
+            )
+            .unwrap_or_default()),
+
+            Ok(response) => Err(DatabaseErrorResponse {
+                response_status: response.status().as_u16(),
+                error: serde_json::from_str(&response.text().await.unwrap()).unwrap_or_default(),
+            }),
+
+            Err(_) => Err(DatabaseErrorResponse {
+                response_status: 500,
+                ..Default::default()
             }),
         }
     }
@@ -87,7 +123,7 @@ impl ServiceRequest for ServiceRequestService {
                 let body = serde_json::to_string(&payload).unwrap();
 
                 let res = self
-                    .client
+                    .db_client
                     .from(SERVICE_REQUEST_TABLE)
                     .insert(body)
                     .execute()
@@ -146,7 +182,7 @@ impl ServiceRequest for ServiceRequestService {
                 }
 
                 let res = self
-                    .client
+                    .db_client
                     .from(SERVICE_REQUEST_TABLE)
                     .eq("id", payload.request_id)
                     .delete()
@@ -204,7 +240,7 @@ impl ServiceRequest for ServiceRequestService {
                 // Check if user already bid on`request_id`
 
                 let res = self
-                    .client
+                    .db_client
                     .from(SERVICE_REQUEST_BID_TABLE)
                     .eq("request_id", &payload.request_id)
                     .eq("bidder", &payload.bidder)
@@ -233,7 +269,7 @@ impl ServiceRequest for ServiceRequestService {
                 let body = serde_json::to_string(&payload).unwrap();
 
                 let res = self
-                    .client
+                    .db_client
                     .from(SERVICE_REQUEST_BID_TABLE)
                     .insert(body)
                     .execute()
@@ -276,7 +312,7 @@ impl ServiceRequest for ServiceRequestService {
             Some(payload) => {
                 {
                     let res = self
-                        .client
+                        .db_client
                         .from(SERVICE_REQUEST_BID_TABLE)
                         .eq("id", &payload.bid_id)
                         .execute()
@@ -296,7 +332,7 @@ impl ServiceRequest for ServiceRequestService {
                 }
 
                 let res = self
-                    .client
+                    .db_client
                     .from(SERVICE_REQUEST_BID_TABLE)
                     .eq("id", &payload.bid_id)
                     .delete()
@@ -315,6 +351,70 @@ impl ServiceRequest for ServiceRequestService {
                 tonic::Code::InvalidArgument,
                 error_messages::INVALID_PAYLOAD,
             )),
+        }
+    }
+
+    async fn get_rating_by_id(
+        &self,
+        request: Request<get_rating_by_id::Request>,
+    ) -> Result<Response<get_rating_by_id::Response>> {
+        let payload = request.into_inner().payload;
+
+        match payload {
+            Some(payload) if !payload.request_id.is_empty() => {
+                let res = self.get_rating("request_id", &payload.request_id).await;
+
+                match res {
+                    Ok(values) => Ok(Response::new(get_rating_by_id::Response {
+                        rating: values.into_iter().next(),
+                    })),
+
+                    _ => Err(Status::unknown(error_messages::UNKNOWN)),
+                }
+            }
+
+            _ => Err(Status::new(
+                tonic::Code::InvalidArgument,
+                error_messages::INVALID_PAYLOAD,
+            )),
+        }
+    }
+
+    async fn place_rating(
+        &self,
+        request: Request<place_rating::Request>,
+    ) -> Result<Response<place_rating::Response>> {
+        let payload = request.into_inner().payload;
+
+        if let Some(payload) = payload {
+            let res = self
+                .db_client
+                .from("service_rating")
+                .insert(serde_json::to_string(&payload).unwrap_or_default())
+                .execute()
+                .await
+                .unwrap();
+
+            let res_status = res.status();
+            let res_data = res.json::<serde_json::Value>().await.unwrap();
+
+            match res_status {
+                StatusCode::CREATED => {
+                    let rating =
+                        serde_json::from_value::<Vec<ServiceRating>>(res_data).unwrap_or_default();
+
+                    Ok(Response::new(place_rating::Response {
+                        rating: rating.into_iter().next(),
+                    }))
+                }
+
+                _ => Err(Status::unknown(error_messages::UNKNOWN)),
+            }
+        } else {
+            Err(Status::new(
+                tonic::Code::InvalidArgument,
+                error_messages::INVALID_PAYLOAD,
+            ))
         }
     }
 }

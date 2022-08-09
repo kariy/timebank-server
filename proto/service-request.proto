@@ -1,18 +1,14 @@
 syntax = "proto3";
 package servicerequest;
 
-// import "google/protobufcargo/any.proto";
-
 service ServiceRequest {
     rpc create (Create.Request) returns (Create.Response);
     rpc getById (GetById.Request) returns (GetById.Response);
     rpc delete (Delete.Request) returns (Delete.Response);
     rpc placeBid (PlaceBid.Request) returns (PlaceBid.Response);
     rpc deleteBid (DeleteBid.Request) returns (DeleteBid.Response);
-    // rpc get () returns ();
-    // rpc update (Update.Request) returns (Update.Response);
-    // rpc getBids (Get.Request) returns (GetBids.Response);
-    // rpc acceptBid () returns ();
+    rpc getRatingById (GetRatingById.Request) returns (GetRatingById.Response);
+    rpc placeRating (PlaceRating.Request) returns (PlaceRating.Response);
 }
 
 message ServiceRequestBid {
@@ -63,7 +59,7 @@ message ServiceRequestData {
 }
 
 message Create {
-    message CreateServiceRequestPayload {
+    message Payload {
         ServiceRequestData.Details details = 1;
         float rate = 2;
         repeated string media_attachments = 3;
@@ -71,7 +67,7 @@ message Create {
     }
 
     message Request {
-        CreateServiceRequestPayload payload = 1;
+        Payload payload = 1;
         // string auth_token = 3;
     }
 
@@ -136,15 +132,46 @@ message DeleteBid {
     }
 }
 
-// message Update {
-//     message Request {
-//         string request_id = 1;
-//         string update_body = 2;
-//     }
+message ServiceRating {
+    string id = 1;
+    string author = 2;
+    int32 value = 3;
+    string comment = 4;
+    string created_at = 5;
+    string updated_at = 6;
+    string request_id = 7;
+    string recipient = 8;
+}
 
-//     message Response {
-//         bool is_successful = 1;
-//         optional ServiceRequest updated_request = 2;
-//     }
-// }
+message GetRatingById {
+    message Payload {
+        string request_id = 1;
+    }
+
+    message Request {
+        Payload payload = 1;
+    }
+
+    message Response {
+        ServiceRating rating = 1;
+    }
+}
+
+message PlaceRating {
+    message Payload {
+        string author = 1;
+        int32 value = 2;
+        string comment = 3;
+        string request_id = 4;
+        string recipient =  5;
+    }
+
+    message Request {
+        Payload payload = 1;
+    }
+
+    message Response {
+        ServiceRating rating = 1;
+    }
+}
 
