@@ -7,14 +7,17 @@ service ServiceRequest {
     rpc delete (Delete.Request) returns (Delete.Response);
     rpc placeBid (PlaceBid.Request) returns (PlaceBid.Response);
     rpc deleteBid (DeleteBid.Request) returns (DeleteBid.Response);
-    rpc getRatingById (GetRatingById.Request) returns (GetRatingById.Response);
+    rpc selectBid (SelectBid.Request) returns (SelectBid.Response);
+    // rpc getBidsOf (GetBidsOf.Request) returns (GetBidsOf.Response);
+    // rpc getBidById (GetBidById.Request) returns (GetBidById.Response);
+    rpc getRating (GetRating.Request) returns (GetRating.Response);
     rpc placeRating (PlaceRating.Request) returns (PlaceRating.Response);
 }
 
 message ServiceRequestBid {
     string id = 1;
     string bidder = 2;
-    uint32 amount = 3;
+    float amount = 3;
     string request_id = 4;
     string created_at = 5;
 }
@@ -45,7 +48,6 @@ message ServiceRequestData {
         ABORTED = 4;
     }
 
-
     string id = 1;
     string requestor = 2;
     optional string provider = 3;
@@ -53,17 +55,21 @@ message ServiceRequestData {
     Details details = 5;
     repeated string media_attachments = 6;
     float rate = 7;
-    ServiceRequestBid accepted_bid = 8;
+    string accepted_bid = 8;
     string created_at = 9;
     string updated_at = 10;
 }
 
 message Create {
-    message Payload {
+    message NewServiceRequestData {
         ServiceRequestData.Details details = 1;
         float rate = 2;
         repeated string media_attachments = 3;
-        string requestor = 4;
+    }
+
+    message Payload {
+        NewServiceRequestData request_data = 1;
+        string requestor = 2;
     }
 
     message Request {
@@ -107,7 +113,7 @@ message PlaceBid {
     message Payload {
         string request_id = 1;
         string bidder = 2;
-        uint32 amount = 3;
+        float amount = 3;
     }
 
     message Request {
@@ -143,7 +149,7 @@ message ServiceRating {
     string recipient = 8;
 }
 
-message GetRatingById {
+message GetRating {
     message Payload {
         string request_id = 1;
     }
@@ -175,3 +181,17 @@ message PlaceRating {
     }
 }
 
+message SelectBid {
+    message Payload {
+        string request_id = 1;
+        string bid_id = 2;
+    }
+
+    message Request {
+        Payload payload = 1;
+    }
+
+    message Response {
+        ServiceRequestData request = 1;
+    }
+}

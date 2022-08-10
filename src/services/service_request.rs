@@ -4,17 +4,17 @@
 use crate::services::{util::create_postgrest_client, Result};
 use postgrest::Postgrest;
 use reqwest::StatusCode;
+use serde_json::json;
 use tonic::{Request, Response, Status};
 
 use crate::proto::servicerequest::service_request_server::ServiceRequest;
 use crate::proto::servicerequest::{
-    create, delete, delete_bid, get_by_id, get_rating_by_id, place_bid, place_rating,
+    create, delete, delete_bid, get_by_id, get_rating, place_bid, place_rating, select_bid,
 };
 use crate::proto::servicerequest::{ServiceRating, ServiceRequestBid, ServiceRequestData};
 use crate::services::error_messages;
 
 const SERVICE_REQUEST_TABLE: &str = "service_request";
-const SERVICE_REQUEST_BID_TABLE: &str = "service_request_bid";
 
 pub struct ServiceRequestService {
     db_client: Postgrest,
@@ -106,8 +106,6 @@ impl ServiceRequestService {
             }),
         }
     }
-
-    // async fn is_authorize(&self) {}
 }
 
 #[tonic::async_trait]
@@ -120,20 +118,24 @@ impl ServiceRequest for ServiceRequestService {
 
         match payload {
             Some(payload) => {
-                let body = serde_json::to_string(&payload).unwrap();
+                let body = json!({
+                    "_requestor": payload.requestor,
+                    "_request": payload.request_data
+                });
 
                 let res = self
                     .db_client
-                    .from(SERVICE_REQUEST_TABLE)
-                    .insert(body)
+                    .rpc(
+                        "create_service_request",
+                        serde_json::to_string(&body).unwrap(),
+                    )
                     .execute()
                     .await
                     .unwrap();
 
                 match res.status() {
-                    StatusCode::CREATED => {
-                        let values: Vec<ServiceRequestData> =
-                            serde_json::from_str(&res.text().await.unwrap()).unwrap_or_default();
+                    StatusCode::OK => {
+                        let values: Vec<ServiceRequestData> = res.json().await.unwrap();
 
                         Ok(Response::new(create::Response {
                             request: values.into_iter().next(),
@@ -237,49 +239,22 @@ impl ServiceRequest for ServiceRequestService {
 
         match payload {
             Some(payload) => {
-                // Check if user already bid on`request_id`
+                let body = json!({
+                    "_request_id": payload.request_id,
+                    "_bidder": payload.bidder,
+                    "_amount": payload.amount
+                });
 
                 let res = self
                     .db_client
-                    .from(SERVICE_REQUEST_BID_TABLE)
-                    .eq("request_id", &payload.request_id)
-                    .eq("bidder", &payload.bidder)
-                    .execute()
-                    .await
-                    .unwrap();
-
-                let data =
-                    serde_json::from_str::<Vec<ServiceRequestBid>>(&res.text().await.unwrap());
-
-                match data {
-                    Ok(data) => {
-                        if !data.is_empty() {
-                            return Err(Status::new(
-                                tonic::Code::AlreadyExists,
-                                error_messages::ALREADY_EXISTS,
-                            ));
-                        }
-                    }
-
-                    Err(_) => {
-                        return Err(Status::new(tonic::Code::Unknown, error_messages::UNKNOWN))
-                    }
-                }
-
-                let body = serde_json::to_string(&payload).unwrap();
-
-                let res = self
-                    .db_client
-                    .from(SERVICE_REQUEST_BID_TABLE)
-                    .insert(body)
+                    .rpc("place_bid", serde_json::to_string(&body).unwrap())
                     .execute()
                     .await
                     .unwrap();
 
                 match res.status() {
-                    StatusCode::CREATED => {
-                        let bids: Vec<ServiceRequestBid> =
-                            serde_json::from_str(&res.text().await.unwrap()).unwrap_or_default();
+                    StatusCode::OK => {
+                        let bids: Vec<ServiceRequestBid> = res.json().await.unwrap();
 
                         Ok(Response::new(place_bid::Response {
                             bid: bids.into_iter().next(),
@@ -310,32 +285,13 @@ impl ServiceRequest for ServiceRequestService {
 
         match payload {
             Some(payload) => {
-                {
-                    let res = self
-                        .db_client
-                        .from(SERVICE_REQUEST_BID_TABLE)
-                        .eq("id", &payload.bid_id)
-                        .execute()
-                        .await
-                        .unwrap();
-
-                    let data =
-                        serde_json::from_str::<Vec<ServiceRequestBid>>(&res.text().await.unwrap())
-                            .unwrap_or_default();
-
-                    if data.is_empty() {
-                        return Err(Status::new(
-                            tonic::Code::FailedPrecondition,
-                            "ITEM DOESN'T EXIST",
-                        ));
-                    }
-                }
+                let body = json!({
+                    "_bid_id": payload.bid_id,
+                });
 
                 let res = self
                     .db_client
-                    .from(SERVICE_REQUEST_BID_TABLE)
-                    .eq("id", &payload.bid_id)
-                    .delete()
+                    .rpc("delete_bid", serde_json::to_string(&body).unwrap())
                     .execute()
                     .await
                     .unwrap();
@@ -354,10 +310,53 @@ impl ServiceRequest for ServiceRequestService {
         }
     }
 
-    async fn get_rating_by_id(
+    async fn select_bid(
         &self,
-        request: Request<get_rating_by_id::Request>,
-    ) -> Result<Response<get_rating_by_id::Response>> {
+        request: Request<select_bid::Request>,
+    ) -> Result<Response<select_bid::Response>> {
+        let payload = request.into_inner().payload;
+
+        match payload {
+            Some(payload) if !payload.request_id.is_empty() => {
+                let body = json!({
+                    "_request_id": payload.request_id,
+                    "_bid_id": payload.bid_id
+                });
+
+                let res = self
+                    .db_client
+                    .rpc("select_bid", serde_json::to_string(&body).unwrap())
+                    .execute()
+                    .await
+                    .unwrap();
+
+                match res.status() {
+                    StatusCode::OK => {
+                        let values: Vec<ServiceRequestData> = res.json().await.unwrap();
+
+                        Ok(Response::new(select_bid::Response {
+                            request: values.into_iter().next(),
+                        }))
+                    }
+
+                    _ => {
+                        println!("got error : {:?}", res.text().await.unwrap());
+                        Err(Status::unknown(error_messages::UNKNOWN))
+                    }
+                }
+            }
+
+            _ => Err(Status::new(
+                tonic::Code::InvalidArgument,
+                error_messages::INVALID_PAYLOAD,
+            )),
+        }
+    }
+
+    async fn get_rating(
+        &self,
+        request: Request<get_rating::Request>,
+    ) -> Result<Response<get_rating::Response>> {
         let payload = request.into_inner().payload;
 
         match payload {
@@ -365,7 +364,7 @@ impl ServiceRequest for ServiceRequestService {
                 let res = self.get_rating("request_id", &payload.request_id).await;
 
                 match res {
-                    Ok(values) => Ok(Response::new(get_rating_by_id::Response {
+                    Ok(values) => Ok(Response::new(get_rating::Response {
                         rating: values.into_iter().next(),
                     })),
 
@@ -387,21 +386,24 @@ impl ServiceRequest for ServiceRequestService {
         let payload = request.into_inner().payload;
 
         if let Some(payload) = payload {
+            let body = json!({
+                "_author": payload.author,
+                "_request_id": payload.request_id,
+                "_recipient": payload.recipient,
+                "_comment": payload.comment,
+                "_value": payload.value
+            });
+
             let res = self
                 .db_client
-                .from("service_rating")
-                .insert(serde_json::to_string(&payload).unwrap_or_default())
+                .rpc("place_rating", serde_json::to_string(&body).unwrap())
                 .execute()
                 .await
                 .unwrap();
 
-            let res_status = res.status();
-            let res_data = res.json::<serde_json::Value>().await.unwrap();
-
-            match res_status {
-                StatusCode::CREATED => {
-                    let rating =
-                        serde_json::from_value::<Vec<ServiceRating>>(res_data).unwrap_or_default();
+            match res.status() {
+                StatusCode::OK => {
+                    let rating: Vec<ServiceRating> = res.json().await.unwrap();
 
                     Ok(Response::new(place_rating::Response {
                         rating: rating.into_iter().next(),
