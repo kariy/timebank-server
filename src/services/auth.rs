@@ -1,5 +1,5 @@
 ///
-/// Service for handling auth related operations eg login, regi&ster
+/// Service for handling auth related operations eg sign_in, regi&ster
 ///
 // TODO:
 // (1) Handle KYC during registration process
@@ -8,7 +8,7 @@ use serde_json::json;
 use tonic::{Request, Response, Status};
 
 use crate::proto::auth::auth_server::Auth;
-use crate::proto::auth::{login, register};
+use crate::proto::auth::{sign_in, sign_up};
 use crate::services::error_messages;
 use reqwest::{self, StatusCode};
 
@@ -19,18 +19,15 @@ pub struct AuthService {}
 
 #[tonic::async_trait]
 impl Auth for AuthService {
-    async fn login(
+    async fn sign_in(
         &self,
-        request: Request<login::Request>,
-    ) -> Result<Response<login::Response>, Status> {
+        request: Request<sign_in::Request>,
+    ) -> Result<Response<sign_in::Response>, Status> {
         let payload = request.into_inner().payload;
 
         if let Some(payload) = payload {
             if payload.email.is_empty() || payload.password.is_empty() {
-                return Err(Status::new(
-                    tonic::Code::InvalidArgument,
-                    "Invalid Arguments",
-                ));
+                return Err(Status::invalid_argument("Missing email or password"));
             }
 
             let res = HTTP::post(
@@ -45,7 +42,7 @@ impl Auth for AuthService {
             let res_data = res.json::<serde_json::Value>().await.unwrap();
 
             match res_status {
-                StatusCode::OK => Ok(Response::new(login::Response {
+                StatusCode::OK => Ok(Response::new(sign_in::Response {
                     auth_token: res_data["access_token"]
                         .as_str()
                         .unwrap_or_default()
@@ -56,28 +53,24 @@ impl Auth for AuthService {
                         .to_string(),
                 })),
 
-                StatusCode::BAD_REQUEST => Err(Status::new(
-                    tonic::Code::InvalidArgument,
+                StatusCode::BAD_REQUEST => Err(Status::invalid_argument(
                     res_data["error_description"]
                         .as_str()
                         .unwrap_or_default()
                         .to_uppercase(),
                 )),
 
-                _ => Err(Status::new(tonic::Code::Unknown, error_messages::UNKNOWN)),
+                _ => Err(Status::unknown(error_messages::UNKNOWN)),
             }
         } else {
-            Err(Status::new(
-                tonic::Code::InvalidArgument,
-                error_messages::INVALID_PAYLOAD,
-            ))
+            Err(Status::invalid_argument(error_messages::INVALID_PAYLOAD))
         }
     }
 
-    async fn register(
+    async fn sign_up(
         &self,
-        request: Request<register::Request>,
-    ) -> Result<Response<register::Response>, Status> {
+        request: Request<sign_up::Request>,
+    ) -> Result<Response<sign_up::Response>, Status> {
         let payload = request.into_inner().payload;
 
         if let Some(payload) = payload {
@@ -88,7 +81,7 @@ impl Auth for AuthService {
                 .unwrap();
 
             match res.status() {
-                StatusCode::OK => Ok(Response::new(register::Response {})),
+                StatusCode::OK => Ok(Response::new(sign_up::Response {})),
 
                 StatusCode::UNPROCESSABLE_ENTITY => Err(Status::new(
                     tonic::Code::ResourceExhausted,

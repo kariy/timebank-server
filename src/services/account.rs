@@ -2,32 +2,29 @@
 
 use postgrest::Postgrest;
 use reqwest::StatusCode;
+use serde_json::json;
 use tonic::{Request, Response, Status};
 
 use crate::proto::account::user_server::User;
-use crate::proto::account::{get_by_id, update, UserProfileData};
-use crate::services::{error_messages, Result};
-
-use super::util::create_postgrest_client;
+use crate::proto::account::{get, get_rating, update, TUserProfile};
+use crate::proto::timebank::servicerating::TServiceRating;
+use crate::services::{error_messages, util, Result};
 
 pub struct UserService {
     db_client: Postgrest,
 }
 
 impl UserService {
-    pub fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(UserService {
-            db_client: create_postgrest_client().unwrap(),
-        })
+    pub fn new() -> Self {
+        Self {
+            db_client: util::miscellaneous::create_postgrest_client(),
+        }
     }
 }
 
 #[tonic::async_trait]
 impl User for UserService {
-    async fn get_by_id(
-        &self,
-        request: Request<get_by_id::Request>,
-    ) -> Result<Response<get_by_id::Response>> {
+    async fn get(&self, request: Request<get::Request>) -> Result<Response<get::Response>> {
         let payload = request.into_inner().payload;
 
         match payload {
@@ -40,15 +37,11 @@ impl User for UserService {
                     .await
                     .unwrap();
 
-                let res_status = res.status();
-                let res_data = res.json::<serde_json::Value>().await.unwrap();
-
-                match res_status {
+                match res.status() {
                     StatusCode::OK => {
-                        let values =
-                            serde_json::from_value::<Vec<UserProfileData>>(res_data).unwrap();
+                        let values: Vec<TUserProfile> = res.json().await.unwrap();
 
-                        Ok(Response::new(get_by_id::Response {
+                        Ok(Response::new(get::Response {
                             user: values.into_iter().next(),
                         }))
                     }
@@ -83,13 +76,9 @@ impl User for UserService {
                     .await
                     .unwrap();
 
-                let res_status = res.status();
-                let res_data = res.json::<serde_json::Value>().await.unwrap();
-
-                match res_status {
+                match res.status() {
                     StatusCode::OK => {
-                        let values = serde_json::from_value::<Vec<UserProfileData>>(res_data)
-                            .unwrap_or_default();
+                        let values: Vec<TUserProfile> = res.json().await.unwrap();
 
                         Ok(Response::new(update::Response {
                             user: values.into_iter().next(),
@@ -103,6 +92,45 @@ impl User for UserService {
                     _ => Err(Status::unknown(error_messages::UNKNOWN)),
                 }
             }
+            _ => Err(Status::invalid_argument(error_messages::INVALID_PAYLOAD)),
+        }
+    }
+
+    async fn get_rating(
+        &self,
+        request: Request<get_rating::Request>,
+    ) -> Result<Response<get_rating::Response>> {
+        let payload = request.into_inner().payload;
+
+        match payload {
+            Some(payload) => {
+                let res = self
+                    .db_client
+                    .rpc(
+                        "user_get_rating",
+                        json!({
+                            "_user_id": payload.user_id,
+                        })
+                        .to_string(),
+                    )
+                    .execute()
+                    .await
+                    .unwrap();
+
+                match res.status() {
+                    StatusCode::OK => {
+                        let ratings: Vec<TServiceRating> = res
+                            .json()
+                            .await
+                            .expect("UNABLE TO PARSE RESPONSE DATA AS `Vec<TServiceRating>`");
+
+                        Ok(Response::new(get_rating::Response { ratings }))
+                    }
+
+                    _ => Err(Status::unknown(error_messages::UNKNOWN)),
+                }
+            }
+
             _ => Err(Status::invalid_argument(error_messages::INVALID_PAYLOAD)),
         }
     }

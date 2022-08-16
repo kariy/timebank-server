@@ -2,11 +2,11 @@ syntax = "proto3";
 package auth;
 
 service Auth {
-    rpc login (Login.Request) returns (Login.Response);
-    rpc register (Register.Request) returns (Register.Response);
+    rpc signIn (SignIn.Request) returns (SignIn.Response);
+    rpc signUp (SignUp.Request) returns (SignUp.Response);
 }
 
-message Login {
+message SignIn {
     message Payload {
         string email = 1;
         string password = 2;
@@ -22,8 +22,8 @@ message Login {
     }
 }
 
-message Register {
-    message IDCardImages {
+message SignUp {
+    message MatricCard {
         bytes front = 1;
         bytes back = 2;
     }
@@ -34,7 +34,7 @@ message Register {
         string name = 3;
         string phone_number = 4;
         string matric_number = 5;
-        IDCardImages matric_card = 6;
+        MatricCard matric_card = 6;
     }   
 
     message Request {

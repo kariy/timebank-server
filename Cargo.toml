@@ -1,13 +1,19 @@
 [package]
-name = "server"
+name = "timebank-server"
+description = "A gRPC server for a timebank system for my FYP."
+repository = "https://github.com/kariy/timebank-server"
 version = "0.1.0"
 edition = "2021"
+authors = ["Kari <evergreenkary@gmail.com>"]
+default-run = "server"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[[bin]] 
+[[bin]]
 name = "server"
 path = "src/server.rs"
+
+[[bin]]
+name = "client"
+path = "src/client.rs"
 
 [dependencies]
 tonic = "0.7.2"
@@ -19,6 +25,8 @@ serde = { version = "1.0.139", features = ["derive"] }
 serde_json = "1.0.82"
 tokio = { version = "1.20.0", features = ["full"] }
 reqwest = { version = "0.11.11", features = ["json"] }
+go_true = { version = "0.1.1", path = "../gotrue-rs" }
+tower = "0.4.13"
 
 [build-dependencies] 
 tonic-build = "0.7.2"
